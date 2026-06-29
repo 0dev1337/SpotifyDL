@@ -19,6 +19,7 @@ import (
 
 const (
 	ffmpegReleaseBase = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
+	shakaReleaseBase  = "https://github.com/shaka-project/static-ffmpeg-binaries/releases/latest/download"
 	ytdlpReleaseBase  = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
 )
 
@@ -116,14 +117,14 @@ func assetsForPlatform() (installAssets, error) {
 		}, nil
 	case "darwin-amd64":
 		return installAssets{
-			ffmpegURL:    ffmpegReleaseBase + "/ffmpeg-master-latest-macos64-gpl-shared.tar.xz",
-			ffmpegFormat: "tar.xz",
+			ffmpegURL:    shakaReleaseBase + "/ffmpeg-osx-x64",
+			ffmpegFormat: "binary",
 			ytdlpURL:     ytdlpReleaseBase + "/yt-dlp_macos",
 		}, nil
 	case "darwin-arm64":
 		return installAssets{
-			ffmpegURL:    ffmpegReleaseBase + "/ffmpeg-master-latest-macosarm64-gpl-shared.tar.xz",
-			ffmpegFormat: "tar.xz",
+			ffmpegURL:    shakaReleaseBase + "/ffmpeg-osx-arm64",
+			ffmpegFormat: "binary",
 			ytdlpURL:     ytdlpReleaseBase + "/yt-dlp_macos",
 		}, nil
 	default:
@@ -156,6 +157,13 @@ func installFFmpeg(ctx context.Context, assets installAssets, destDir string, fo
 	}
 	if err := tmpFile.Close(); err != nil {
 		return err
+	}
+
+	if assets.ffmpegFormat == "binary" {
+		if err := copyFile(tmpPath, ffmpegBin); err != nil {
+			return err
+		}
+		return os.Chmod(ffmpegBin, 0o755)
 	}
 
 	extractDir, err := os.MkdirTemp("", "spotifydl-ffmpeg-extract-*")
