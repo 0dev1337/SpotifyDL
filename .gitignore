@@ -1,0 +1,13 @@
+# fetched on first run
+/tools/
+
+# Build output
+/dist/
+*.exe
+!scripts/**/*.exe
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
