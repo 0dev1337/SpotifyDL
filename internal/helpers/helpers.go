@@ -10,10 +10,7 @@ import (
 )
 
 func CheckDependencies() {
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
-	defer cancel()
-
-	paths, err := tools.ResolveOrInstall(ctx, "", "")
+	paths, err := EnsureDependencies()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -21,4 +18,10 @@ func CheckDependencies() {
 
 	fmt.Printf("ffmpeg: %s\n", paths.FFmpeg)
 	fmt.Printf("yt-dlp: %s\n", paths.YTDLP)
+}
+
+func EnsureDependencies() (tools.Paths, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	defer cancel()
+	return tools.ResolveOrInstall(ctx, "", "")
 }

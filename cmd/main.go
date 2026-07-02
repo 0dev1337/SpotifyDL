@@ -2,22 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/0dev1337/SpotifyDL/internal/helpers"
-	"github.com/0dev1337/SpotifyDL/pkg/spotify"
+	"github.com/0dev1337/SpotifyDL/internal/tui"
 )
 
 func main() {
-	helpers.CheckDependencies()
-
-	client, err := spotify.NewClient()
-	if err != nil {
-		fmt.Printf("Error creating Spotify client: %v\n", err)
-		return
+	if err := tui.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-	if err := client.Setup(); err != nil {
-		fmt.Printf("Error setting up Spotify client: %v\n", err)
-		return
-	}
-
 }

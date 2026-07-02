@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	http "github.com/bogdanfinn/fhttp"
@@ -73,9 +74,6 @@ func (c *Client) Setup() error {
 		return fmt.Errorf("get client token: %w", err)
 	}
 	c.ClientTokenResponse = clientTokenResponse
-
-	fmt.Println("Access Token: ", c.AccessTokenResponse.AccessToken)
-	fmt.Println("Client Token: ", c.ClientTokenResponse.GrantedTokenResponse.Token)
 	return nil
 }
 
@@ -136,4 +134,102 @@ func (c *Client) GetClientToken() (ClientTokenResponse, error) {
 	}
 
 	return clientTokenResponse, nil
+}
+
+const playlistPageSize = 25
+
+func (c *Client) GetPlaylist(playlistID string) (*PlaylistResponse, error) {
+	first, err := c.fetchPlaylistPage(playlistID, 0, playlistPageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	playlist := first
+	content := &playlist.Data.PlaylistV2.Content
+	items := content.Items
+	total := content.TotalCount
+
+	for offset := len(items); offset < total; offset += playlistPageSize {
+		page, err := c.fetchPlaylistPage(playlistID, offset, playlistPageSize)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, page.Data.PlaylistV2.Content.Items...)
+	}
+
+	content.Items = items
+	return playlist, nil
+}
+
+func (c *Client) fetchPlaylistPage(playlistID string, offset, limit int) (*PlaylistResponse, error) {
+	payload := fmt.Sprintf(`{
+  "variables": {
+    "uri": "spotify:playlist:%s",
+    "offset": %d,
+    "limit": %d,
+    "enableWatchFeedEntrypoint": false,
+    "includeEpisodeContentRatingsV2": true
+  },
+  "operationName": "fetchPlaylist",
+  "extensions": {
+    "persistedQuery": {
+      "version": 1,
+      "sha256Hash": "a65e12194ed5fc443a1cdebed5fabe33ca5b07b987185d63c72483867ad13cb4"
+    }
+  }
+}`, playlistID, offset, limit)
+
+	request, err := http.NewRequest(http.MethodPost, "https://api-partner.spotify.com/pathfinder/v2/query", strings.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+
+	request.Header = c.pathfinderHeaders()
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("fetch playlist: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read playlist response: %w", err)
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch playlist: %s: %s", response.Status, string(body))
+	}
+
+	var playlistResponse PlaylistResponse
+	if err := json.Unmarshal(body, &playlistResponse); err != nil {
+		return nil, fmt.Errorf("decode playlist response: %w", err)
+	}
+
+	return &playlistResponse, nil
+}
+
+func (c *Client) pathfinderHeaders() http.Header {
+	return http.Header{
+		"Accept":          {"application/json"},
+		"Accept-Language": {"en-US,en;q=0.9"},
+		"Content-Type":    {"application/json"},
+		"Origin":          {"https://open.spotify.com"},
+		"Referer":         {"https://open.spotify.com/"},
+		"User-Agent":      {defaultUserAgent()},
+		"Authorization":   {fmt.Sprintf("Bearer %s", c.AccessTokenResponse.AccessToken)},
+		"Client-Token":    {c.ClientTokenResponse.GrantedTokenResponse.Token},
+		"app-platform":    {"WebPlayer"},
+		http.HeaderOrderKey: {
+			"Accept",
+			"Accept-Language",
+			"Authorization",
+			"Client-Token",
+			"Content-Type",
+			"Origin",
+			"Referer",
+			"User-Agent",
+			"app-platform",
+		},
+	}
 }
