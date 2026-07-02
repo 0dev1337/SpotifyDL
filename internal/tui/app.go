@@ -97,20 +97,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch m.page {
+		case pageDone:
+			if msg.String() == "enter" || msg.String() == "q" || msg.String() == "esc" {
+				return m.resetToMenu(), nil
+			}
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
+		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			return m, tea.Quit
+		}
+
+		switch m.page {
 		case pageMenu:
 			return m.updateMenu(msg)
 		case pageSettings:
 			return m.updateSettings(msg)
 		case pagePlaylistInput:
 			return m.updatePlaylistInput(msg)
-		case pageDone:
-			if msg.String() == "enter" || msg.String() == "q" || msg.String() == "esc" {
-				return m.resetToMenu(), nil
-			}
-		}
-
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
-			return m, tea.Quit
 		}
 
 	case spinner.TickMsg:
