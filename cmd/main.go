@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/0dev1337/SpotifyDL/internal/helpers"
@@ -10,15 +9,15 @@ import (
 
 func main() {
 	helpers.CheckDependencies()
-	result, err := spotify.BuildTotp(context.Background(), 0, "")
+
+	client, err := spotify.NewClient()
 	if err != nil {
-		panic(err)
+		fmt.Printf("Error creating Spotify client: %v\n", err)
+		return
 	}
-	fmt.Printf("TOTP: %s\n", result.Totp)
-	fmt.Printf("TOTP Server: %s\n", result.TotpServer)
-	fmt.Printf("Client Time: %d\n", result.ClientTime)
-	fmt.Printf("Server Time: %d\n", *result.ServerTime)
-	fmt.Printf("Cipher: %s\n", result.Cipher)
-	fmt.Printf("Version: %d\n", result.Version)
+	if err := client.Setup(); err != nil {
+		fmt.Printf("Error setting up Spotify client: %v\n", err)
+		return
+	}
 
 }
