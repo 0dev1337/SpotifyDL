@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0dev1337/SpotifyDL/internal/helpers"
 	"github.com/0dev1337/SpotifyDL/pkg/spotify"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -38,6 +37,8 @@ type model struct {
 	textInput     textinput.Model
 	spinner       spinner.Model
 	loadingText   string
+	loadingDetail string
+	loadCh        chan tea.Msg
 	playlistID    string
 	playlistName  string
 	tracks        []spotify.TrackData
@@ -117,7 +118,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case loadStartedMsg:
+		m.loadCh = msg.ch
+		m.loadingText = "Preparing..."
+		m.loadingDetail = ""
+		return m, waitForLoad(msg.ch)
+
+	case loadProgressMsg:
+		if msg.clear {
+			m.loadingDetail = ""
+			m.loadingText = "Fetching playlist..."
+		} else {
+			m.loadingDetail = msg.detail
+		}
+		return m, waitForLoad(m.loadCh)
+
 	case loadDoneMsg:
+		m.loadCh = nil
+		m.loadingDetail = ""
 		if msg.err != nil {
 			m.page = pagePlaylistInput
 			m.statusMsg = msg.err.Error()
@@ -235,7 +253,8 @@ func (m model) updatePlaylistInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.playlistID = id
 		m.page = pageLoading
-		m.loadingText = "Fetching playlist and preparing download..."
+		m.loadingText = "Preparing..."
+		m.loadingDetail = ""
 		m.textInput.Blur()
 		return m, tea.Batch(m.spinner.Tick, loadPlaylist(id))
 	}
@@ -254,31 +273,9 @@ func (m model) resetToMenu() model {
 	m.failed = 0
 	m.activeTracks = nil
 	m.downloadCh = nil
+	m.loadCh = nil
+	m.loadingDetail = ""
 	return m
-}
-
-func loadPlaylist(playlistID string) tea.Cmd {
-	return func() tea.Msg {
-		if _, err := helpers.EnsureDependencies(); err != nil {
-			return loadDoneMsg{err: fmt.Errorf("dependencies: %w", err)}
-		}
-
-		client, err := spotify.NewClient()
-		if err != nil {
-			return loadDoneMsg{err: fmt.Errorf("create client: %w", err)}
-		}
-
-		if err := client.Setup(); err != nil {
-			return loadDoneMsg{err: fmt.Errorf("setup client: %w", err)}
-		}
-
-		playlist, err := client.GetPlaylist(playlistID)
-		if err != nil {
-			return loadDoneMsg{err: fmt.Errorf("fetch playlist: %w", err)}
-		}
-
-		return loadDoneMsg{playlist: playlist}
-	}
 }
 
 func (m model) View() string {
@@ -370,6 +367,10 @@ func renderLoading(m model) string {
 	b.WriteString(titleStyle.Render("Loading"))
 	b.WriteString("\n\n")
 	b.WriteString(fmt.Sprintf("%s %s", m.spinner.View(), labelStyle.Render(m.loadingText)))
+	if m.loadingDetail != "" {
+		b.WriteString("\n")
+		b.WriteString(subtitleStyle.Render(m.loadingDetail))
+	}
 	return b.String()
 }
 

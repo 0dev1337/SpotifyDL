@@ -10,7 +10,7 @@ import (
 )
 
 func CheckDependencies() {
-	paths, err := EnsureDependencies()
+	paths, err := EnsureDependencies(nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -20,8 +20,8 @@ func CheckDependencies() {
 	fmt.Printf("yt-dlp: %s\n", paths.YTDLP)
 }
 
-func EnsureDependencies() (tools.Paths, error) {
+func EnsureDependencies(onProgress tools.ProgressFunc) (tools.Paths, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
-	return tools.ResolveOrInstall(ctx, "", "")
+	return tools.ResolveOrInstallWithProgress(ctx, "", "", onProgress)
 }

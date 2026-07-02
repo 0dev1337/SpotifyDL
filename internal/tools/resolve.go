@@ -36,6 +36,10 @@ func Resolve(ffmpegPath, ytdlpPath string) (Paths, error) {
 
 // Same as Resolve, but pulls down tools/ first when nothing is configured.
 func ResolveOrInstall(ctx context.Context, ffmpegPath, ytdlpPath string) (Paths, error) {
+	return ResolveOrInstallWithProgress(ctx, ffmpegPath, ytdlpPath, nil)
+}
+
+func ResolveOrInstallWithProgress(ctx context.Context, ffmpegPath, ytdlpPath string, onProgress ProgressFunc) (Paths, error) {
 	paths, err := Resolve(ffmpegPath, ytdlpPath)
 	if err == nil {
 		return paths, nil
@@ -46,7 +50,7 @@ func ResolveOrInstall(ctx context.Context, ffmpegPath, ytdlpPath string) (Paths,
 	}
 
 	resolveErr := err
-	if installErr := Install(ctx, InstallOptions{}); installErr != nil {
+	if installErr := Install(ctx, InstallOptions{OnProgress: onProgress}); installErr != nil {
 		return Paths{}, fmt.Errorf("%w; auto-install failed: %v", resolveErr, installErr)
 	}
 

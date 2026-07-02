@@ -29,9 +29,20 @@ type installAssets struct {
 	ytdlpURL     string
 }
 
+type ProgressFunc func(msg string)
+
 type InstallOptions struct {
-	Root  string
-	Force bool
+	Root       string
+	Force      bool
+	OnProgress ProgressFunc
+}
+
+func (opts InstallOptions) report(msg string) {
+	if opts.OnProgress != nil {
+		opts.OnProgress(msg)
+	} else {
+		fmt.Println(msg)
+	}
 }
 
 func Install(ctx context.Context, opts InstallOptions) error {
@@ -62,14 +73,16 @@ func Install(ctx context.Context, opts InstallOptions) error {
 		return fmt.Errorf("create tools dir: %w", err)
 	}
 
-	if err := installFFmpeg(ctx, assets, ffmpegDir, opts.Force); err != nil {
+	if err := installFFmpeg(ctx, assets, ffmpegDir, opts); err != nil {
 		return fmt.Errorf("install ffmpeg: %w", err)
 	}
-	if err := installYTDLP(ctx, assets, ytdlpPath, opts.Force); err != nil {
+	if err := installYTDLP(ctx, assets, ytdlpPath, opts); err != nil {
 		return fmt.Errorf("install yt-dlp: %w", err)
 	}
 
-	fmt.Printf("Done. Tools are in %s\n", toolsDir)
+	if opts.OnProgress == nil {
+		fmt.Printf("Done. Tools are in %s\n", toolsDir)
+	}
 	return nil
 }
 
@@ -132,14 +145,20 @@ func assetsForPlatform() (installAssets, error) {
 	}
 }
 
-func installFFmpeg(ctx context.Context, assets installAssets, destDir string, force bool) error {
+func installFFmpeg(ctx context.Context, assets installAssets, destDir string, opts InstallOptions) error {
 	ffmpegBin := filepath.Join(destDir, toolFileName("ffmpeg"))
-	if !force && fileExists(ffmpegBin) {
-		fmt.Printf("ffmpeg already present at %s\n", ffmpegBin)
+	if !opts.Force && fileExists(ffmpegBin) {
+		if opts.OnProgress == nil {
+			fmt.Printf("ffmpeg already present at %s\n", ffmpegBin)
+		}
 		return nil
 	}
 
-	fmt.Printf("Downloading ffmpeg from %s\n", assets.ffmpegURL)
+	if opts.OnProgress != nil {
+		opts.report("Downloading ffmpeg...")
+	} else {
+		fmt.Printf("Downloading ffmpeg from %s\n", assets.ffmpegURL)
+	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
@@ -190,7 +209,7 @@ func installFFmpeg(ctx context.Context, assets installAssets, destDir string, fo
 		return err
 	}
 
-	if force {
+	if opts.Force {
 		if err := os.RemoveAll(destDir); err != nil {
 			return err
 		}
@@ -214,13 +233,19 @@ func installFFmpeg(ctx context.Context, assets installAssets, destDir string, fo
 	return nil
 }
 
-func installYTDLP(ctx context.Context, assets installAssets, destPath string, force bool) error {
-	if !force && fileExists(destPath) {
-		fmt.Printf("yt-dlp already present at %s\n", destPath)
+func installYTDLP(ctx context.Context, assets installAssets, destPath string, opts InstallOptions) error {
+	if !opts.Force && fileExists(destPath) {
+		if opts.OnProgress == nil {
+			fmt.Printf("yt-dlp already present at %s\n", destPath)
+		}
 		return nil
 	}
 
-	fmt.Printf("Downloading yt-dlp from %s\n", assets.ytdlpURL)
+	if opts.OnProgress != nil {
+		opts.report("Downloading yt-dlp...")
+	} else {
+		fmt.Printf("Downloading yt-dlp from %s\n", assets.ytdlpURL)
+	}
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
