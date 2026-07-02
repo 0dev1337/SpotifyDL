@@ -146,6 +146,16 @@ func (t TrackData) ArtistNames() []string {
 	return names
 }
 
+func (t TrackData) AlbumArtistNames() []string {
+	names := make([]string, 0, len(t.AlbumOfTrack.Artists.Items))
+	for _, artist := range t.AlbumOfTrack.Artists.Items {
+		if artist.Profile.Name != "" {
+			names = append(names, artist.Profile.Name)
+		}
+	}
+	return names
+}
+
 func (t TrackData) LargestCoverURL() string {
 	var best ImageSource
 	for _, source := range t.AlbumOfTrack.CoverArt.Sources {

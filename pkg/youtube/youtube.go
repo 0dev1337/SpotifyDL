@@ -58,6 +58,10 @@ func DownloadMusic(track spotify.TrackData) error {
 		return fmt.Errorf("download failed for %q", track.Name)
 	}
 
+	if err := embedMetadata(outputPath(track), track); err != nil {
+		return fmt.Errorf("embed metadata for %q: %w", track.Name, err)
+	}
+
 	return nil
 }
 
