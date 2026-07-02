@@ -1,8 +1,13 @@
 package youtube
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -11,6 +16,7 @@ import (
 
 	"github.com/0dev1337/SpotifyDL/pkg/spotify"
 	"github.com/bogem/id3v2"
+	"golang.org/x/image/webp"
 )
 
 func embedMetadata(path string, track spotify.TrackData) error {
@@ -43,17 +49,26 @@ func embedMetadata(path string, track spotify.TrackData) error {
 		Text:        track.URI,
 	})
 
-	if coverURL := track.LargestCoverURL(); coverURL != "" {
+	coverURL := track.LargestCoverURL()
+	if coverURL != "" {
 		imageData, mimeType, err := fetchCoverArt(coverURL)
-		if err == nil && len(imageData) > 0 {
-			tag.AddAttachedPicture(id3v2.PictureFrame{
-				Encoding:    id3v2.EncodingUTF8,
-				MimeType:    mimeType,
-				PictureType: id3v2.PTFrontCover,
-				Description: "Album cover",
-				Picture:     imageData,
-			})
+		if err != nil {
+			return fmt.Errorf("fetch cover art: %w", err)
 		}
+
+		imageData, mimeType, err = normalizeCoverImage(imageData, mimeType)
+		if err != nil {
+			return fmt.Errorf("process cover art: %w", err)
+		}
+
+		tag.DeleteFrames(tag.CommonID("Attached picture"))
+		tag.AddAttachedPicture(id3v2.PictureFrame{
+			Encoding:    id3v2.EncodingUTF8,
+			MimeType:    mimeType,
+			PictureType: id3v2.PTFrontCover,
+			Description: "Album cover",
+			Picture:     imageData,
+		})
 	}
 
 	if err := tag.Save(); err != nil {
@@ -71,6 +86,8 @@ func fetchCoverArt(url string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -97,6 +114,37 @@ func fetchCoverArt(url string) ([]byte, string, error) {
 	}
 
 	return data, mimeType, nil
+}
+
+func normalizeCoverImage(data []byte, mimeType string) ([]byte, string, error) {
+	mimeType = strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0]))
+	switch mimeType {
+	case "image/jpeg", "image/jpg":
+		return data, "image/jpeg", nil
+	case "image/png":
+		return data, "image/png", nil
+	}
+
+	var (
+		img image.Image
+		err error
+	)
+	switch mimeType {
+	case "image/webp":
+		img, err = webp.Decode(bytes.NewReader(data))
+	default:
+		img, _, err = image.Decode(bytes.NewReader(data))
+	}
+	if err != nil {
+		return nil, "", err
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), "image/jpeg", nil
 }
 
 func mimeTypeFromURL(url string) string {

@@ -162,9 +162,19 @@ func (t TrackData) LargestCoverURL() string {
 		if source.URL == "" {
 			continue
 		}
-		if source.Width > best.Width {
+
+		size := sourceSize(source)
+		bestSize := sourceSize(best)
+		if best.URL == "" || size > bestSize {
 			best = source
 		}
 	}
 	return best.URL
+}
+
+func sourceSize(source ImageSource) int {
+	if source.Width > 0 {
+		return source.Width
+	}
+	return source.Height
 }
