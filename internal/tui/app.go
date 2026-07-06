@@ -105,6 +105,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, nil
+		case pagePlaylistInput:
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m.updatePlaylistInput(msg)
 		}
 
 		if msg.String() == "ctrl+c" || msg.String() == "q" {
@@ -116,8 +121,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMenu(msg)
 		case pageSettings:
 			return m.updateSettings(msg)
-		case pagePlaylistInput:
-			return m.updatePlaylistInput(msg)
 		}
 
 	case spinner.TickMsg:
