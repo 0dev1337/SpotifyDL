@@ -39,7 +39,7 @@ Run `go run ./cmd/main.go` (or `./spotifydl` if you built the binary). You will 
 ### 3. Adjust download speed (optional)
 
 1. From the main menu, open **Settings**
-2. Use **↑ / ↓** or **+ / -** to change concurrent workers (default: 4, range: 1–16)
+2. Use **↑ / ↓** or **+ / -** to change concurrent workers (default: 4, range: 1–50). Use **PgUp / PgDn** for ±10.
 3. Press **Enter** to save and go back
 
 More workers download faster but use more bandwidth and CPU.

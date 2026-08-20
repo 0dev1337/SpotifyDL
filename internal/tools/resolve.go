@@ -42,6 +42,7 @@ func ResolveOrInstall(ctx context.Context, ffmpegPath, ytdlpPath string) (Paths,
 func ResolveOrInstallWithProgress(ctx context.Context, ffmpegPath, ytdlpPath string, onProgress ProgressFunc) (Paths, error) {
 	paths, err := Resolve(ffmpegPath, ytdlpPath)
 	if err == nil {
+		UpdateBundledYTDLP(ctx, paths.YTDLP, onProgress)
 		return paths, nil
 	}
 
@@ -59,6 +60,7 @@ func ResolveOrInstallWithProgress(ctx context.Context, ffmpegPath, ytdlpPath str
 		return Paths{}, fmt.Errorf("%w; still missing after auto-install: %v", resolveErr, err)
 	}
 
+	UpdateBundledYTDLP(ctx, paths.YTDLP, onProgress)
 	return paths, nil
 }
 

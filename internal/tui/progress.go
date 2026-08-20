@@ -32,3 +32,19 @@ func progressLine(completed, total int, workers int) string {
 func fmtPercent(completed, total, percent, workers int) string {
 	return fmt.Sprintf("%d%%  %d / %d tracks  •  %d workers", percent, completed, total, workers)
 }
+
+func activeDownloadLine(completed, total, workers int) string {
+	remaining := total - completed
+	if remaining <= 0 {
+		return "finishing up..."
+	}
+
+	active := workers
+	if active > remaining {
+		active = remaining
+	}
+	if active == 1 {
+		return fmt.Sprintf("%d download running", active)
+	}
+	return fmt.Sprintf("%d downloads running", active)
+}

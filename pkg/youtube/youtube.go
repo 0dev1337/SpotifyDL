@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,8 +16,8 @@ import (
 )
 
 const (
-	defaultOutputDir   = "downloads"
-	downloadTimeout    = 30 * time.Minute
+	defaultOutputDir = "downloads"
+	downloadTimeout  = 10 * time.Minute
 )
 
 func DownloadMusic(track spotify.TrackData) error {
@@ -24,7 +25,10 @@ func DownloadMusic(track spotify.TrackData) error {
 	if err != nil {
 		return fmt.Errorf("resolve tools: %w", err)
 	}
+	return DownloadMusicWithPaths(track, paths)
+}
 
+func DownloadMusicWithPaths(track spotify.TrackData, paths tools.Paths) error {
 	if err := os.MkdirAll(defaultOutputDir, 0o755); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}
@@ -37,8 +41,11 @@ func DownloadMusic(track spotify.TrackData) error {
 		"--no-playlist",
 		"--quiet",
 		"--no-progress",
+		"--no-update",
 		"--remote-components", "ejs:github",
 		"--extractor-args", "youtube:player_client=default,-android_sdkless",
+		"--socket-timeout", "30",
+		"--retries", "3",
 		"-f", "bestaudio/best",
 		"-x",
 		"--audio-format", "mp3",
@@ -51,10 +58,18 @@ func DownloadMusic(track spotify.TrackData) error {
 	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 	defer cancel()
 
+	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, paths.YTDLP, args...)
-	cmd.Stderr = io.Discard
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			if idx := strings.LastIndex(detail, "\n"); idx >= 0 {
+				detail = strings.TrimSpace(detail[idx+1:])
+			}
+			return fmt.Errorf("download failed for %q: %s", track.Name, detail)
+		}
 		return fmt.Errorf("download failed for %q", track.Name)
 	}
 

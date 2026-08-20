@@ -3,7 +3,9 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/0dev1337/SpotifyDL/internal/tools"
 	"github.com/0dev1337/SpotifyDL/pkg/spotify"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -25,7 +27,7 @@ const (
 const (
 	defaultWorkers = 4
 	minWorkers     = 1
-	maxWorkers     = 16
+	maxWorkers     = 50
 )
 
 type model struct {
@@ -45,7 +47,10 @@ type model struct {
 	workers       int
 	succeeded     int
 	failed        int
-	activeTracks  map[string]string
+	activeCount   int
+	currentTrack  string
+	toolPaths     tools.Paths
+	downloadStart time.Time
 	latestTrack   string
 	latestArtist  string
 	downloadCh    chan tea.Msg
@@ -54,6 +59,7 @@ type model struct {
 
 type loadDoneMsg struct {
 	playlist *spotify.PlaylistResponse
+	paths    tools.Paths
 	err      error
 }
 
@@ -152,18 +158,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 			return m, textinput.Blink
 		}
-		return m.startDownload(msg.playlist)
+		return m.startDownload(msg.playlist, msg.paths)
 
 	case trackStartedMsg:
-		label := fmt.Sprintf("%s — %s", msg.track.Name, strings.Join(msg.track.ArtistNames(), ", "))
-		if m.activeTracks == nil {
-			m.activeTracks = make(map[string]string)
-		}
-		m.activeTracks[msg.track.URI] = label
+		m.activeCount++
+		m.currentTrack = fmt.Sprintf("%s — %s", msg.track.Name, strings.Join(msg.track.ArtistNames(), ", "))
 		return m, waitForDownload(m.downloadCh)
 
 	case trackCompletedMsg:
-		delete(m.activeTracks, msg.track.URI)
+		m.activeCount = max(0, m.activeCount-1)
 		m.latestTrack = msg.track.Name
 		m.latestArtist = strings.Join(msg.track.ArtistNames(), ", ")
 
@@ -176,21 +179,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case downloadFinishedMsg:
 		m.page = pageDone
-		m.activeTracks = nil
+		m.activeCount = 0
 		return m, nil
+
+	case downloadTickMsg:
+		if m.page != pageDownload {
+			return m, nil
+		}
+		return m, tea.Batch(waitForDownload(m.downloadCh), downloadTick())
 	}
 
 	return m, nil
 }
 
-func (m model) startDownload(playlist *spotify.PlaylistResponse) (model, tea.Cmd) {
+func (m model) startDownload(playlist *spotify.PlaylistResponse, paths tools.Paths) (model, tea.Cmd) {
 	m.tracks = playlist.Tracks()
 	m.playlistName = playlist.Data.PlaylistV2.Name
+	m.toolPaths = paths
 	m.succeeded = 0
 	m.failed = 0
-	m.activeTracks = nil
+	m.activeCount = 0
+	m.currentTrack = ""
 	m.latestTrack = ""
 	m.latestArtist = ""
+	m.downloadStart = time.Now()
 
 	if len(m.tracks) == 0 {
 		m.page = pageDone
@@ -199,9 +211,9 @@ func (m model) startDownload(playlist *spotify.PlaylistResponse) (model, tea.Cmd
 	}
 
 	m.page = pageDownload
-	m.downloadCh = make(chan tea.Msg, m.workers*4)
-	go runConcurrentDownloads(m.downloadCh, m.tracks, m.workers)
-	return m, waitForDownload(m.downloadCh)
+	m.downloadCh = make(chan tea.Msg, len(m.tracks)*2+2)
+	go runConcurrentDownloads(m.downloadCh, m.tracks, m.workers, paths)
+	return m, tea.Batch(waitForDownload(m.downloadCh), downloadTick())
 }
 
 func (m model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -238,13 +250,13 @@ func (m model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.page = pageMenu
 		return m, nil
 	case "up", "k", "+":
-		if m.workers < maxWorkers {
-			m.workers++
-		}
+		m.workers = clampWorkers(m.workers + 1)
 	case "down", "j", "-":
-		if m.workers > minWorkers {
-			m.workers--
-		}
+		m.workers = clampWorkers(m.workers - 1)
+	case "pgup":
+		m.workers = clampWorkers(m.workers + 10)
+	case "pgdown":
+		m.workers = clampWorkers(m.workers - 10)
 	}
 	return m, nil
 }
@@ -281,7 +293,8 @@ func (m model) resetToMenu() model {
 	m.tracks = nil
 	m.succeeded = 0
 	m.failed = 0
-	m.activeTracks = nil
+	m.activeCount = 0
+	m.currentTrack = ""
 	m.downloadCh = nil
 	m.loadCh = nil
 	m.loadingDetail = ""
@@ -340,7 +353,7 @@ func renderSettings(m model) string {
 		subtitleStyle.Render(fmt.Sprintf("Range: %d–%d", minWorkers, maxWorkers)),
 	}, "\n")))
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑/↓ or +/- adjust  •  enter back  •  esc back"))
+	b.WriteString(helpStyle.Render("↑/↓ ±1  •  pgup/pgdn ±10  •  enter/esc back"))
 	return b.String()
 }
 
@@ -402,13 +415,16 @@ func renderDownload(m model) string {
 		progressLine(completed, total, m.workers),
 		"",
 		labelStyle.Render("In progress"),
+		subtitleStyle.Render(activeDownloadLine(completed, total, m.workers)),
 	}
-	if len(m.activeTracks) == 0 {
-		lines = append(lines, subtitleStyle.Render("starting workers..."))
-	} else {
-		for _, track := range m.activeTracks {
-			lines = append(lines, subtitleStyle.Render("• "+track))
-		}
+	if m.currentTrack != "" {
+		lines = append(lines, subtitleStyle.Render("• "+m.currentTrack))
+	}
+	if m.activeCount > 1 {
+		lines = append(lines, subtitleStyle.Render(fmt.Sprintf("  + %d more active", m.activeCount-1)))
+	}
+	if !m.downloadStart.IsZero() && completed < total {
+		lines = append(lines, subtitleStyle.Render(fmt.Sprintf("elapsed %s", time.Since(m.downloadStart).Round(time.Second))))
 	}
 	if m.latestTrack != "" {
 		lines = append(lines, "", labelStyle.Render("Latest finished"))

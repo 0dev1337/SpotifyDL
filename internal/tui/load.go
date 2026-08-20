@@ -35,8 +35,14 @@ func runLoadPlaylist(ch chan tea.Msg, playlistID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
 
-	if _, err := tools.ResolveOrInstallWithProgress(ctx, "", "", onProgress); err != nil {
+	paths, err := tools.ResolveOrInstallWithProgress(ctx, "", "", onProgress)
+	if err != nil {
 		ch <- loadDoneMsg{err: fmt.Errorf("dependencies: %w", err)}
+		return
+	}
+
+	if err := tools.WarmupYTDLP(ctx, paths, onProgress); err != nil {
+		ch <- loadDoneMsg{err: fmt.Errorf("prepare yt-dlp: %w", err)}
 		return
 	}
 	ch <- loadProgressMsg{clear: true}
@@ -58,7 +64,7 @@ func runLoadPlaylist(ch chan tea.Msg, playlistID string) {
 		return
 	}
 
-	ch <- loadDoneMsg{playlist: playlist}
+	ch <- loadDoneMsg{playlist: playlist, paths: paths}
 }
 
 func waitForLoad(ch chan tea.Msg) tea.Cmd {
